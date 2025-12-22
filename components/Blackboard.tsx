@@ -25,9 +25,6 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
     }
 
     const fullText = currentStep.blackboardText;
-    // If it's a step we've already passed (user scrubbed backwards), usually we just show full text.
-    // But for simplicity in this logic, we reset and re-type or show full immediately depending on play state.
-    // Let's just reset typewriter to allow the "re-teaching" feel.
     
     let currentIndex = 0;
     setDisplayedCurrentText('');
@@ -45,12 +42,8 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
         return prev + char;
       });
       
-      if (scrollRef.current) {
-         // Auto scroll to bottom to follow writing
-         // Only scroll if we are near the bottom to avoid fighting user scroll
-         // But for a "video" mode, forcing scroll is usually better
-         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      // Removed the aggressive scrollTop = scrollHeight to prevent forced scrolling to bottom
+      // allowing the user to read from the top while it types.
     }, 30); // Speed of writing
 
     return () => {
@@ -64,7 +57,8 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
         // Find the element with id `step-${currentStepIndex}` and scroll to it
         const el = document.getElementById(`step-${currentStepIndex}`);
         if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Changed block to 'start' so it aligns the top of the step to the top of the view
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
   }, [currentStepIndex]);

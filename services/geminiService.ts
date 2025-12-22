@@ -1,14 +1,15 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { ExplanationStep } from "../types";
 
-const getAIClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAIClient = (apiKey: string) => new GoogleGenAI({ apiKey });
 
 // 1. Generate Step-by-Step Explanation (JSON)
 export const generateExplanationSteps = async (
+  apiKey: string,
   prompt: string,
   imageBase64?: string
 ): Promise<ExplanationStep[]> => {
-  const ai = getAIClient();
+  const ai = getAIClient(apiKey);
   
   const parts: any[] = [];
   if (imageBase64) {
@@ -66,8 +67,8 @@ export const generateExplanationSteps = async (
 };
 
 // 2. Generate Audio for a specific text with Voice Selection
-export const generateTeacherVoice = async (text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
-  const ai = getAIClient();
+export const generateTeacherVoice = async (apiKey: string, text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
+  const ai = getAIClient(apiKey);
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",

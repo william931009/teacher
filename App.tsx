@@ -2,12 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Blackboard } from './components/Blackboard';
 import { InputSection } from './components/InputSection';
 import { PlayerControls } from './components/PlayerControls';
+import { WelcomeScreen } from './components/WelcomeScreen';
 import { generateExplanationSteps, generateTeacherVoice } from './services/geminiService';
 import { decodeAudioData, playAudio } from './services/audioUtils';
 import { ExplanationStep } from './types';
-import { Bot, Volume2 } from 'lucide-react';
+import { Bot, Volume2, LogOut } from 'lucide-react';
 
 const App: React.FC = () => {
+  // App Config State
+  const [apiKey, setApiKey] = useState<string>('');
+
   // Data State
   const [steps, setSteps] = useState<ExplanationStep[]>([]);
   
@@ -22,6 +26,18 @@ const App: React.FC = () => {
   const isComponentMounted = useRef(true);
 
   useEffect(() => {
+    // Safe check for process.env in case it's defined (e.g. dev environment)
+    // In raw browser, this try-catch prevents the crash.
+    try {
+        // @ts-ignore
+        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+            // @ts-ignore
+            setApiKey(process.env.API_KEY);
+        }
+    } catch (e) {
+        // process is undefined, ignore
+    }
+
     return () => { isComponentMounted.current = false; };
   }, []);
 
@@ -92,6 +108,8 @@ const App: React.FC = () => {
 
 
   const handleSubmit = async (text: string, imageBase64?: string, voiceName: string = 'Kore') => {
+    if (!apiKey) return;
+
     initAudioContext();
     setIsLoading(true);
     setIsPlaying(false);
@@ -99,12 +117,12 @@ const App: React.FC = () => {
     setCurrentStepIndex(0);
     
     try {
-        const generatedSteps = await generateExplanationSteps(text, imageBase64);
+        const generatedSteps = await generateExplanationSteps(apiKey, text, imageBase64);
         setSteps(generatedSteps);
 
         // Preload Audio with Selected Voice
         generatedSteps.forEach(async (step, index) => {
-            const audioData = await generateTeacherVoice(step.spokenText, voiceName);
+            const audioData = await generateTeacherVoice(apiKey, step.spokenText, voiceName);
             if (audioData && audioContextRef.current) {
                 const buffer = await decodeAudioData(audioData, audioContextRef.current);
                 setSteps(prev => {
@@ -123,7 +141,7 @@ const App: React.FC = () => {
         setIsLoading(false);
         setSteps([{ 
             title: "Error", 
-            blackboardText: "系統發生錯誤，請重試。", 
+            blackboardText: "系統發生錯誤或 API Key 無效，請重試。", 
             spokenText: "系統發生錯誤，請重試。" 
         }]);
     }
@@ -132,9 +150,11 @@ const App: React.FC = () => {
   const handleSeek = (stepIndex: number) => {
       stopCurrentAudio();
       setCurrentStepIndex(stepIndex);
-      // If user seeks, we typically pause or keep playing. 
-      // Let's keep playing if it was playing, but restart audio for that step logic handles that.
   };
+
+  if (!apiKey) {
+      return <WelcomeScreen onStart={setApiKey} />;
+  }
 
   return (
     <div className="fixed inset-0 bg-gray-950 flex flex-col font-sans overflow-hidden">
@@ -146,7 +166,15 @@ const App: React.FC = () => {
         <div className="md:w-72 bg-gray-900 border-b md:border-b-0 md:border-r border-gray-800 shrink-0 flex md:flex-col justify-between p-3 md:p-4 gap-3 z-20">
              
              {/* Robot Avatar & Status */}
-             <div className="flex items-center gap-3 md:flex-col md:text-center">
+             <div className="flex items-center gap-3 md:flex-col md:text-center relative">
+                 <button 
+                    onClick={() => setApiKey('')}
+                    className="md:absolute md:top-0 md:right-0 p-1 text-slate-600 hover:text-red-400 transition-colors"
+                    title="登出 / 清除 API Key"
+                 >
+                     <LogOut size={16} />
+                 </button>
+
                  <div className={`
                     w-10 h-10 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all duration-300
                     ${isPlaying ? 'bg-green-500/20 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-slate-800 border border-slate-700'}
@@ -209,7 +237,7 @@ const App: React.FC = () => {
                 onSeek={handleSeek}
              />
 
-             {/* Mobile Input (Overlay or Bottom Sheet style if needed, but sticky bottom is easiest) */}
+             {/* Mobile Input */}
              <div className="md:hidden bg-gray-900 border-t border-gray-800 p-2 shrink-0">
                   <InputSection onSubmit={handleSubmit} isLoading={isLoading} />
              </div>

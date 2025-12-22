@@ -1,0 +1,7 @@
+{
+  "name": "AI Blackboard Tutor",
+  "description": "An interactive AI tutor for middle and high school students that simulates a blackboard teaching experience with voice and visual explanations.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

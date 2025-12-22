@@ -8,6 +8,13 @@ import { decodeAudioData, playAudio } from './services/audioUtils';
 import { ExplanationStep } from './types';
 import { Bot, Volume2, LogOut } from 'lucide-react';
 
+// ----------------------------------------------------------------------
+// 【給開發者】：如果您希望部署到 GitHub Pages 後訪客可以直接使用，
+// 請將您的 Gemini API Key 填入下方的引號中。
+// 警告：這會公開您的 API Key，建議僅用於演示或設定了額度限制的 Key。
+const PRE_CONFIGURED_API_KEY = ""; 
+// ----------------------------------------------------------------------
+
 const App: React.FC = () => {
   // App Config State
   const [apiKey, setApiKey] = useState<string>('');
@@ -26,8 +33,13 @@ const App: React.FC = () => {
   const isComponentMounted = useRef(true);
 
   useEffect(() => {
-    // Safe check for process.env in case it's defined (e.g. dev environment)
-    // In raw browser, this try-catch prevents the crash.
+    // 1. Check for Hardcoded Key (Priority 1)
+    if (PRE_CONFIGURED_API_KEY) {
+        setApiKey(PRE_CONFIGURED_API_KEY);
+        return;
+    }
+
+    // 2. Check for Environment Variable (Priority 2 - Dev environment)
     try {
         // @ts-ignore
         if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
@@ -167,13 +179,16 @@ const App: React.FC = () => {
              
              {/* Robot Avatar & Status */}
              <div className="flex items-center gap-3 md:flex-col md:text-center relative">
-                 <button 
-                    onClick={() => setApiKey('')}
-                    className="md:absolute md:top-0 md:right-0 p-1 text-slate-600 hover:text-red-400 transition-colors"
-                    title="登出 / 清除 API Key"
-                 >
-                     <LogOut size={16} />
-                 </button>
+                 {/* Only show logout if NOT using hardcoded key */}
+                 {!PRE_CONFIGURED_API_KEY && (
+                     <button 
+                        onClick={() => setApiKey('')}
+                        className="md:absolute md:top-0 md:right-0 p-1 text-slate-600 hover:text-red-400 transition-colors"
+                        title="登出 / 清除 API Key"
+                     >
+                         <LogOut size={16} />
+                     </button>
+                 )}
 
                  <div className={`
                     w-10 h-10 md:w-24 md:h-24 rounded-full flex items-center justify-center transition-all duration-300

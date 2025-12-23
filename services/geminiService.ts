@@ -23,29 +23,16 @@ export const generateExplanationSteps = async (
     你是一位專業的國高中補習班老師。
     請將解題過程分解成 3-5 個清晰的步驟，以便製作成教學影片。
     
-    **格式嚴格規定 (違反會導致顯示錯誤)：**
-
-    1.  **數學算式「絕對」不可重複**：
-        *   ❌ 嚴禁：$x+y=10$ x+y=10 (禁止在 LaTeX 後面重複純文字)
-        *   ❌ 嚴禁：$x+y=10$ $x+y=10$ (禁止重複寫兩次一樣的算式)
-        *   ❌ 嚴禁：答案選 (D)(D) (選項只寫一次)
-        *   ✅ 正確：$x+y=10$ (乾淨、簡潔，只寫一次)
-
-    2.  **LaTeX 語法規範**：
-        *   所有數學符號、數字、變數都**必須**包在單個錢字號 $ 中。
-        *   嚴禁使用方括號 [] 或 \\[\\] 來包覆算式，一律用 $。
-        *   乘號使用 $\\times$，除號使用 $\\div$。
-        *   範例：$3 \\times 4 = 12$
-
-    3.  **黑板內容 (blackboardText)**：
-        *   這是在黑板上給學生看的，要精簡、條理分明。
-        *   不要寫太多廢話，專注於算式推導。
-        *   排版要用換行符號分開不同算式，讓閱讀舒適。
-
     每個步驟包含：
-    - title: 步驟標題
-    - blackboardText: 黑板內容 (Markdown 格式，數學用 $...$ )
-    - spokenText: 老師口語講解 (口語化，親切自然，不要唸出 LaTeX 語法)
+    1. title: 步驟標題 (例如：分析題目、列出公式、計算過程、最終答案)
+    2. blackboardText: 要寫在黑板上的內容。
+       - **格式嚴格要求**：所有的數學算式、數字、變數都**必須**使用 LaTeX 格式包在錢字號中 (例如 $E=mc^2$ 或 $x=5$)。
+       - **禁止重複**：**絕對不要**在 LaTeX 後面重複寫出純文字算式。
+         - ❌ 錯誤範例："$x + y = 10$ x + y = 10" (禁止寫兩次)
+         - ✅ 正確範例："$x + y = 10$" (只寫一次 LaTeX)
+       - **符號規範**：乘號請務必用 $\times$ (LaTeX) 或 $\cdot$，**不要**用英文字母 x。
+       - 排版：內容要分行、重點清晰，適合黑板閱讀。
+    3. spokenText: 老師講解的口語稿。要口語化、親切、像在對學生說話。不要唸出 LaTeX 原始碼，而是唸出數學意義 (例如 $\frac{1}{2}$ 唸作 "二分之一")。
   `;
 
   try {
@@ -54,7 +41,7 @@ export const generateExplanationSteps = async (
       contents: { parts },
       config: {
         systemInstruction,
-        temperature: 0.1, // Lower temperature to strict adherence
+        temperature: 0.4,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -76,9 +63,10 @@ export const generateExplanationSteps = async (
 
   } catch (error) {
     console.error("Step generation failed", error);
+    // Fallback if JSON parsing fails or model errors
     return [{
         title: "錯誤",
-        blackboardText: "系統發生錯誤，請重試。",
+        blackboardText: "抱歉，老師現在無法分解步驟，請稍後再試。",
         spokenText: "抱歉，老師現在無法分解步驟，請稍後再試。"
     }];
   }

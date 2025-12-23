@@ -9,6 +9,8 @@ interface PlayerControlsProps {
   onNext: () => void;
   onPrev: () => void;
   onSeek: (step: number) => void;
+  onSeekStart?: () => void;
+  onSeekEnd?: () => void;
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -18,7 +20,9 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onPlayPause,
   onNext,
   onPrev,
-  onSeek
+  onSeek,
+  onSeekStart,
+  onSeekEnd
 }) => {
   
   return (
@@ -32,6 +36,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             max={Math.max(0, totalSteps - 1)}
             value={currentStep}
             onChange={(e) => onSeek(Number(e.target.value))}
+            
+            // Pointer events for mouse/pen
+            onPointerDown={onSeekStart}
+            onPointerUp={onSeekEnd}
+            
+            // Explicit touch events for mobile reliability to prevent "fast forward" glitches
+            onTouchStart={onSeekStart}
+            onTouchEnd={onSeekEnd}
+            
             className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-green-500 hover:accent-green-400"
             disabled={totalSteps === 0}
         />

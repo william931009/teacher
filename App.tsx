@@ -15,6 +15,9 @@ const App: React.FC = () => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Track if user is currently scrubbing the timeline
+  const [isSeeking, setIsSeeking] = useState(false);
 
   // Audio Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -48,6 +51,9 @@ const App: React.FC = () => {
 
   // Playback Loop
   useEffect(() => {
+    // If we are seeking, don't try to manage audio flow (handleSeek handles stopping)
+    if (isSeeking) return;
+
     if (!isPlaying || steps.length === 0) {
         stopCurrentAudio();
         return;
@@ -69,11 +75,11 @@ const App: React.FC = () => {
         
         if (step.audioBuffer && audioContextRef.current) {
             audioSourceRef.current = playAudio(step.audioBuffer, audioContextRef.current, () => {
-                 if (isComponentMounted.current && isPlaying) {
+                 if (isComponentMounted.current && isPlaying && !isSeeking) {
                      // Auto advance
                      playingStepIndexRef.current = null; // Clear flag
                      setTimeout(() => {
-                         if (currentStepIndex < steps.length - 1 && isPlaying) {
+                         if (currentStepIndex < steps.length - 1 && isPlaying && !isSeeking) {
                              setCurrentStepIndex(prev => prev + 1);
                          } else {
                              setIsPlaying(false);
@@ -82,36 +88,27 @@ const App: React.FC = () => {
                  }
             });
         } else {
-             // Fallback if no audio (wait then next) - only if we really don't have audio
-             // If we just started, this might fire too early if we don't handle loading right.
-             // But handleSubmit now pre-loads step 0, so this is mostly for mid-stream glitches.
+             // Fallback if no audio (wait then next)
              console.log(`Step ${currentStepIndex} has no audio yet, waiting...`);
              
-             // Simple polling or timeout fallback
              setTimeout(() => {
-                 if (isComponentMounted.current && isPlaying && playingStepIndexRef.current === currentStepIndex) {
-                      // Check if audio arrived in the meantime? 
-                      // For simplicity, just advance if still stuck.
+                 if (isComponentMounted.current && isPlaying && playingStepIndexRef.current === currentStepIndex && !isSeeking) {
                      if (currentStepIndex < steps.length - 1) {
                          setCurrentStepIndex(prev => prev + 1);
                      } else {
                          setIsPlaying(false);
                      }
                  }
-             }, 4000); // Give it a bit more time to load (4s)
+             }, 4000); 
         }
     };
 
     playStep();
     
-    // Cleanup function when effect re-runs or unmounts
     return () => {
-        // We generally don't stop audio on dependency change unless index changes
-        // But since we track playingStepIndexRef, we can manage it.
     };
-  // We include `steps` so that if audio loads for the CURRENT step, we re-run and play it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, isPlaying, steps]); 
+  }, [currentStepIndex, isPlaying, steps, isSeeking]); 
 
 
   const handleSubmit = async (text: string, imageBase64?: string, voiceName: string = 'Kore') => {
@@ -126,7 +123,6 @@ const App: React.FC = () => {
         const generatedSteps = await generateExplanationSteps(text, imageBase64);
         
         // --- 1. Load Step 0 Audio FIRST before playing ---
-        // This ensures the first slide doesn't "skip" due to missing audio.
         if (generatedSteps.length > 0) {
             const firstAudioData = await generateTeacherVoice(generatedSteps[0].spokenText, voiceName);
             if (firstAudioData && audioContextRef.current) {
@@ -137,18 +133,17 @@ const App: React.FC = () => {
         
         setSteps(generatedSteps);
         setIsLoading(false);
-        setIsPlaying(true); // Now we start playing, guaranteed to have step 0 audio (if API worked)
+        setIsPlaying(true); 
 
         // --- 2. Load remaining audio in background ---
         generatedSteps.forEach(async (step, index) => {
-            if (index === 0) return; // Already loaded
+            if (index === 0) return; 
             
             const audioData = await generateTeacherVoice(step.spokenText, voiceName);
             if (audioData && audioContextRef.current) {
                 const buffer = await decodeAudioData(audioData, audioContextRef.current);
                 setSteps(prev => {
                     const newSteps = [...prev];
-                    // Double check index validity
                     if (newSteps[index]) {
                         newSteps[index] = { ...newSteps[index], audioBuffer: buffer };
                     }
@@ -194,7 +189,7 @@ const App: React.FC = () => {
                  <div className="flex-1 md:flex-none">
                      <h1 className="font-bold text-white text-sm md:text-xl">AI 機器人老師</h1>
                      <div className="flex items-center gap-1.5 mt-1 md:justify-center">
-                         {isPlaying && <Volume2 size={12} className="text-green-400 animate-pulse"/>}
+                         {isPlaying ? <Volume2 size={12} className="text-green-400 animate-pulse"/> : null}
                          <p className="text-slate-400 text-xs">{isPlaying ? '正在講解重點...' : '準備中'}</p>
                      </div>
                  </div>
@@ -215,6 +210,7 @@ const App: React.FC = () => {
                     steps={steps} 
                     currentStepIndex={currentStepIndex} 
                     isPlaying={isPlaying}
+                    isSeeking={isSeeking}
                  />
                  
                  {isLoading && (
@@ -244,6 +240,8 @@ const App: React.FC = () => {
                     }
                 }}
                 onSeek={handleSeek}
+                onSeekStart={() => setIsSeeking(true)}
+                onSeekEnd={() => setIsSeeking(false)}
              />
 
              {/* Mobile Input */}

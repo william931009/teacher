@@ -8,9 +8,10 @@ interface BlackboardProps {
   steps: ExplanationStep[];
   currentStepIndex: number;
   isPlaying: boolean;
+  isSeeking?: boolean;
 }
 
-export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex, isPlaying }) => {
+export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex, isPlaying, isSeeking = false }) => {
   const [displayedCurrentText, setDisplayedCurrentText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -24,33 +25,55 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
   // Extract text safely. If undefined, default to empty.
   const currentText = currentStep?.blackboardText || '';
 
+  // CORE LOGIC: Determine what text to render RIGHT NOW.
+  // If we are seeking (scrubbing) OR not playing (paused), we show the FULL text immediately.
+  // We only use the animated 'displayedCurrentText' state when we are genuinely playing through.
+  // This prevents the "fast forward" flickering effect during scrubbing.
+  const textToRender = (isSeeking || !isPlaying) ? currentText : displayedCurrentText;
+
   // Handle Typewriter effect
   useEffect(() => {
-    // If we have no text, just clear and return
+    // 1. Cleanup previous interval
+    if (typingIntervalRef.current) {
+        window.clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+    }
+
+    // 2. If no text, clear state
     if (!currentText) {
         setDisplayedCurrentText('');
         currentAnimatingTextRef.current = null;
-        if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
         return;
     }
 
-    // Only restart animation if the actual TEXT content has changed.
+    // 3. INSTANT RENDER CONDITION
+    // If user is seeking OR paused, we force the state to full text instantly.
+    // This keeps the internal state in sync with the visual "textToRender" logic above.
+    if (isSeeking || !isPlaying) {
+        setDisplayedCurrentText(currentText);
+        currentAnimatingTextRef.current = currentText; // Mark as "done" so it doesn't animate later
+        return;
+    }
+
+    // 4. PREVENT RE-ANIMATION
+    // If the text hasn't changed from what we last processed, don't restart animation.
     if (currentAnimatingTextRef.current === currentText) {
+        // Just ensure state is consistent (in case we switched from seeking to playing on the same step)
+        setDisplayedCurrentText(currentText);
         return; 
     }
 
-    // Start new animation
+    // 5. START TYPEWRITER ANIMATION
+    // Reset for new text
     currentAnimatingTextRef.current = currentText;
     setDisplayedCurrentText('');
     
-    if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
-
     let charIndex = 0;
     
     typingIntervalRef.current = window.setInterval(() => {
       charIndex++;
       
-      // Strict slicing to ensure no duplication
+      // Strict slicing
       setDisplayedCurrentText(currentText.slice(0, charIndex));
 
       if (charIndex >= currentText.length) {
@@ -61,7 +84,7 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
     return () => {
       if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
     };
-  }, [currentText]);
+  }, [currentText, isSeeking, isPlaying]);
 
   // Ensure current step is in view when changed
   useEffect(() => {
@@ -78,7 +101,6 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
     <div className="relative w-full h-full p-2 md:p-6 bg-slate-800 border-4 md:border-8 border-yellow-900/40 rounded-lg shadow-2xl overflow-hidden flex flex-col">
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')] opacity-30 pointer-events-none"></div>
       
-      {/* Explicitly hide MathML to prevent double rendering shadow clones */}
       <style>{`
         .katex-mathml { display: none !important; }
         .katex-html { display: block; }
@@ -126,15 +148,18 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
                  <div className={`${isCurrent ? 'text-white' : 'text-gray-400'} text-xl md:text-2xl min-h-[3rem]`}>
                     <ReactMarkdown
                         remarkPlugins={[remarkMath]}
-                        // Config output to 'html' only to prevent MathML double rendering issues
                         rehypePlugins={[[rehypeKatex, { output: 'html', strict: false, throwOnError: false }]]}
                         components={markdownComponents}
                     >
-                        {isCurrent ? displayedCurrentText : step.blackboardText}
+                        {/* 
+                            Use textToRender which calculates instant vs animated text 
+                            BEFORE the render cycle completes.
+                        */}
+                        {isCurrent ? textToRender : step.blackboardText}
                     </ReactMarkdown>
                     
-                    {/* Laser Pointer Cursor - Only for current step */}
-                    {isCurrent && (
+                    {/* Laser Pointer Cursor - Only show when Playing AND Not Seeking */}
+                    {isCurrent && isPlaying && !isSeeking && (
                         <span className="inline-block w-2 h-2 md:w-3 md:h-3 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] ml-1 animate-pulse align-middle translate-y-0.5"></span>
                     )}
                  </div>

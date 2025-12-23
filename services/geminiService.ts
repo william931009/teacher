@@ -20,19 +20,40 @@ export const generateExplanationSteps = async (
   parts.push({ text: prompt });
 
   const systemInstruction = `
-    你是一位專業的國高中補習班老師。
-    請將解題過程分解成 3-5 個清晰的步驟，以便製作成教學影片。
+    You are a strict backend API that generates structured JSON data for a math tutoring app.
     
-    每個步驟包含：
-    1. title: 步驟標題 (例如：分析題目、列出公式、計算過程、最終答案)
-    2. blackboardText: 要寫在黑板上的內容。
-       - **格式嚴格要求**：所有的數學算式、數字、變數都**必須**使用 LaTeX 格式包在錢字號中 (例如 $E=mc^2$ 或 $x=5$)。
-       - **禁止重複**：**絕對不要**在 LaTeX 後面重複寫出純文字算式。
-         - ❌ 錯誤範例："$x + y = 10$ x + y = 10" (禁止寫兩次)
-         - ✅ 正確範例："$x + y = 10$" (只寫一次 LaTeX)
-       - **符號規範**：乘號請務必用 $\times$ (LaTeX) 或 $\cdot$，**不要**用英文字母 x。
-       - 排版：內容要分行、重點清晰，適合黑板閱讀。
-    3. spokenText: 老師講解的口語稿。要口語化、親切、像在對學生說話。不要唸出 LaTeX 原始碼，而是唸出數學意義 (例如 $\frac{1}{2}$ 唸作 "二分之一")。
+    **CRITICAL RULE FOR blackboardText:**
+    The 'blackboardText' field MUST contain **ONLY** standard LaTeX math expressions wrapped in '$'.
+    
+    **STRICT PROHIBITIONS for blackboardText:**
+    1. ❌ NO plain text math (e.g., do not write "2 + 2 = 4", only write "$2+2=4$").
+    2. ❌ NO titles, labels, or descriptions (e.g., do not write "Step 1:", "Answer:", "Simplify:").
+    3. ❌ NO Chinese characters or words (e.g., do not write "括號內除法").
+    4. ❌ NO ASCII representations (e.g., do not write "[ -2 * 2 ]").
+    
+    **INPUT:**
+    User prompt (text and/or image).
+
+    **OUTPUT:**
+    JSON Array of steps.
+    
+    **EXAMPLE JSON STRUCTURE:**
+    [
+      {
+        "title": "移項",
+        "blackboardText": "$3x = 21 - 9$", 
+        "spokenText": "我們先把常數項移到等號右邊。"
+      },
+      {
+        "title": "計算結果",
+        "blackboardText": "$x = 4$",
+        "spokenText": "最後算出來 X 等於 4。"
+      }
+    ]
+    
+    **Generate 3 to 6 steps.**
+    Ensure 'blackboardText' is clean, large, and purely mathematical using LaTeX.
+    Ensure 'spokenText' is natural, encouraging, and detailed (in Traditional Chinese).
   `;
 
   try {
@@ -41,7 +62,7 @@ export const generateExplanationSteps = async (
       contents: { parts },
       config: {
         systemInstruction,
-        temperature: 0.4,
+        temperature: 0.0, // Force strict adherence to formatting rules
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -49,7 +70,10 @@ export const generateExplanationSteps = async (
             type: Type.OBJECT,
             properties: {
               title: { type: Type.STRING },
-              blackboardText: { type: Type.STRING },
+              blackboardText: { 
+                type: Type.STRING, 
+                description: "STRICTLY LaTeX math formulas ONLY. Wrapped in $. NO plain text, NO words." 
+              },
               spokenText: { type: Type.STRING },
             },
             required: ["title", "blackboardText", "spokenText"],
@@ -63,11 +87,10 @@ export const generateExplanationSteps = async (
 
   } catch (error) {
     console.error("Step generation failed", error);
-    // Fallback if JSON parsing fails or model errors
     return [{
         title: "錯誤",
-        blackboardText: "抱歉，老師現在無法分解步驟，請稍後再試。",
-        spokenText: "抱歉，老師現在無法分解步驟，請稍後再試。"
+        blackboardText: "$\\text{Error generating steps.}$",
+        spokenText: "抱歉，系統發生錯誤，請稍後再試。"
     }];
   }
 };

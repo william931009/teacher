@@ -23,16 +23,21 @@ export const generateExplanationSteps = async (
     你是一位專業的國高中補習班老師。
     請將解題過程分解成 3-5 個清晰的步驟，以便製作成教學影片。
     
+    **重要規則：**
+    1. **數學公式格式**：
+       - 所有數學算式、變數、數字**一律**使用 LaTeX 語法，並用**單個錢字號**包起來。
+       - ✅ 正確：$x + y = 10$, $E = mc^2$, $\frac{1}{2}$
+       - ❌ 嚴禁使用方括號： [ x + y ] 或 \[ x + y \] (這會導致顯示錯誤)
+       - ❌ 嚴禁重複：不要寫了 LaTeX 又寫純文字。例如 "$x=1$ x等於1" (錯！只要寫 $x=1$)
+    
+    2. **排版**：
+       - 使用列點或分行讓內容清晰。
+       - 乘號請用 $\times$ 或 $\cdot$，不要用英文字母 x。
+
     每個步驟包含：
-    1. title: 步驟標題 (例如：分析題目、列出公式、計算過程、最終答案)
-    2. blackboardText: 要寫在黑板上的內容。
-       - **格式嚴格要求**：所有的數學算式、數字、變數都**必須**使用 LaTeX 格式包在錢字號中 (例如 $E=mc^2$ 或 $x=5$)。
-       - **禁止重複**：**絕對不要**在 LaTeX 後面重複寫出純文字算式。
-         - ❌ 錯誤範例："$x + y = 10$ x + y = 10" (禁止寫兩次)
-         - ✅ 正確範例："$x + y = 10$" (只寫一次 LaTeX)
-       - **符號規範**：乘號請務必用 $\times$ (LaTeX) 或 $\cdot$，**不要**用英文字母 x。
-       - 排版：內容要分行、重點清晰，適合黑板閱讀。
-    3. spokenText: 老師講解的口語稿。要口語化、親切、像在對學生說話。不要唸出 LaTeX 原始碼，而是唸出數學意義 (例如 $\frac{1}{2}$ 唸作 "二分之一")。
+    - title: 步驟標題 (例如：分析題目)
+    - blackboardText: 黑板上的內容 (Markdown 格式，數學用 $...$ )
+    - spokenText: 老師講解的口語稿 (自然生動，不要唸出 LaTeX 語法)
   `;
 
   try {
@@ -41,7 +46,7 @@ export const generateExplanationSteps = async (
       contents: { parts },
       config: {
         systemInstruction,
-        temperature: 0.4,
+        temperature: 0.2, // Lower temperature to strict adherence
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -63,10 +68,9 @@ export const generateExplanationSteps = async (
 
   } catch (error) {
     console.error("Step generation failed", error);
-    // Fallback if JSON parsing fails or model errors
     return [{
         title: "錯誤",
-        blackboardText: "抱歉，老師現在無法分解步驟，請稍後再試。",
+        blackboardText: "系統發生錯誤，請重試。",
         spokenText: "抱歉，老師現在無法分解步驟，請稍後再試。"
     }];
   }

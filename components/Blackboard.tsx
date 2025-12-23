@@ -13,51 +13,61 @@ interface BlackboardProps {
 export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex, isPlaying }) => {
   const [displayedCurrentText, setDisplayedCurrentText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Ref to store the interval ID
   const typingIntervalRef = useRef<number | null>(null);
+  
+  // Ref to track the text we are currently animating to avoid unwanted resets/flashing
+  const currentAnimatingTextRef = useRef<string | null>(null);
 
   const currentStep = steps[currentStepIndex];
+  // Extract text safely. If undefined, default to empty.
+  const currentText = currentStep?.blackboardText || '';
 
-  // Handle Typewriter effect for the *current* step only
+  // Handle Typewriter effect
   useEffect(() => {
-    if (!currentStep) {
+    // If we have no text, just clear and return
+    if (!currentText) {
         setDisplayedCurrentText('');
+        currentAnimatingTextRef.current = null;
+        if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
         return;
     }
 
-    const fullText = currentStep.blackboardText;
-    
-    let currentIndex = 0;
+    // Only restart animation if the actual TEXT content has changed.
+    if (currentAnimatingTextRef.current === currentText) {
+        return; 
+    }
+
+    // Start new animation
+    currentAnimatingTextRef.current = currentText;
     setDisplayedCurrentText('');
     
     if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
 
+    let charIndex = 0;
+    
     typingIntervalRef.current = window.setInterval(() => {
-      setDisplayedCurrentText((prev) => {
-        if (currentIndex >= fullText.length) {
-            if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
-            return prev;
-        }
-        const char = fullText[currentIndex];
-        currentIndex++;
-        return prev + char;
-      });
+      charIndex++;
       
-      // Removed the aggressive scrollTop = scrollHeight to prevent forced scrolling to bottom
-      // allowing the user to read from the top while it types.
-    }, 30); // Speed of writing
+      // Strict slicing to ensure no duplication
+      setDisplayedCurrentText(currentText.slice(0, charIndex));
+
+      if (charIndex >= currentText.length) {
+        if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
+      }
+    }, 50); // 50ms typing speed
 
     return () => {
       if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
     };
-  }, [currentStep, currentStepIndex]); 
+  }, [currentText]);
 
   // Ensure current step is in view when changed
   useEffect(() => {
     if (scrollRef.current) {
-        // Find the element with id `step-${currentStepIndex}` and scroll to it
         const el = document.getElementById(`step-${currentStepIndex}`);
         if (el) {
-            // Changed block to 'start' so it aligns the top of the step to the top of the view
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
@@ -68,6 +78,12 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
     <div className="relative w-full h-full p-2 md:p-6 bg-slate-800 border-4 md:border-8 border-yellow-900/40 rounded-lg shadow-2xl overflow-hidden flex flex-col">
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')] opacity-30 pointer-events-none"></div>
       
+      {/* Explicitly hide MathML to prevent double rendering shadow clones */}
+      <style>{`
+        .katex-mathml { display: none !important; }
+        .katex-html { display: block; }
+      `}</style>
+
       {/* Header */}
       <div className="flex justify-between items-center pb-2 border-b border-white/10 mb-2 z-10 shrink-0">
         <h2 className="text-lg md:text-2xl font-chalk text-green-200 tracking-wider truncate mr-2">
@@ -89,7 +105,6 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
           {/* Render All Steps */}
           {steps.map((step, index) => {
              const isCurrent = index === currentStepIndex;
-             const isPast = index < currentStepIndex;
              const isFuture = index > currentStepIndex;
 
              if (isFuture) return null; // Don't show future steps yet
@@ -108,10 +123,11 @@ export const Blackboard: React.FC<BlackboardProps> = ({ steps, currentStepIndex,
                     Step {index + 1}: {step.title}
                  </h3>
                  
-                 <div className={isCurrent ? 'text-white' : 'text-gray-400'}>
+                 <div className={`${isCurrent ? 'text-white' : 'text-gray-400'} text-xl md:text-2xl min-h-[3rem]`}>
                     <ReactMarkdown
                         remarkPlugins={[remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
+                        // Config output to 'html' only to prevent MathML double rendering issues
+                        rehypePlugins={[[rehypeKatex, { output: 'html', strict: false, throwOnError: false }]]}
                         components={markdownComponents}
                     >
                         {isCurrent ? displayedCurrentText : step.blackboardText}
@@ -145,7 +161,7 @@ const markdownComponents = {
     ul: ({node, ...props}: any) => <ul className="list-disc pl-6 mb-4 space-y-2" {...props} />,
     ol: ({node, ...props}: any) => <ol className="list-decimal pl-6 mb-4 space-y-2" {...props} />,
     li: ({node, ...props}: any) => <li className="pl-1" {...props} />,
-    strong: ({node, ...props}: any) => <strong className="text-pink-300 font-bold border-b-2 border-pink-300/50" {...props} />, // Highlight emphasize
+    strong: ({node, ...props}: any) => <strong className="text-pink-300 font-bold border-b-2 border-pink-300/50" {...props} />, 
     code: ({node, className, children, ...props}: any) => {
         return (
             <code className={`${className} bg-slate-700/50 px-1 py-0.5 rounded text-sm font-sans mx-1 text-green-300`} {...props}>

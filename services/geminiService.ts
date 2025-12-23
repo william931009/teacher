@@ -4,6 +4,41 @@ import { ExplanationStep } from "../types";
 // Always use process.env.API_KEY as per guidelines
 const getAIClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// Helper to strictly extract LaTeX content
+const cleanBlackboardContent = (raw: string): string => {
+  if (!raw) return "";
+  
+  // 1. Extract all LaTeX patterns: 
+  // $$...$$ (block), $...$ (inline), \[...\] (display), \(...\) (inline)
+  // Use non-greedy match *? 
+  const latexRegex = /(\$\$[\s\S]*?\$\$|\$[^\n$]*?\$|\\\[[\s\S]*?\\\]|\\\([^\n]*?\\\))/g;
+  const latexMatches = raw.match(latexRegex);
+  
+  // 2. If no LaTeX found, assume the model failed to wrap it.
+  // We try to clean common prefixes like "Step 1:" or "Answer:" if they exist, then wrap in $.
+  if (!latexMatches || latexMatches.length === 0) {
+     let trimmed = raw.trim();
+     
+     // Remove common non-math prefixes often output by AI despite instructions
+     trimmed = trimmed.replace(/^(Step \d+:?|Answer:|Explanation:|步驟 \d+[：:]?)/i, '').trim();
+
+     if (!trimmed) return "";
+     
+     // If it already contains $, return as is (regex failed? unlikely but safe fallback)
+     if (trimmed.includes('$')) return trimmed;
+     
+     return `$${trimmed}$`;
+  }
+
+  // 3. Remove exact consecutive duplicates (AI sometimes repeats the same formula)
+  const uniqueMatches = latexMatches.filter((item, index, arr) => {
+    return index === 0 || item !== arr[index - 1];
+  });
+  
+  // 4. Join with newlines to render as separate blocks
+  return uniqueMatches.join('\n\n');
+};
+
 // 1. Generate Step-by-Step Explanation (JSON)
 export const generateExplanationSteps = async (
   prompt: string,
@@ -83,7 +118,13 @@ export const generateExplanationSteps = async (
     });
 
     const jsonText = response.text || "[]";
-    return JSON.parse(jsonText) as ExplanationStep[];
+    const steps = JSON.parse(jsonText) as ExplanationStep[];
+
+    // Post-process to guarantee cleanliness
+    return steps.map(step => ({
+        ...step,
+        blackboardText: cleanBlackboardContent(step.blackboardText)
+    }));
 
   } catch (error) {
     console.error("Step generation failed", error);

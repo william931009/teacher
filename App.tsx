@@ -19,9 +19,11 @@ const App: React.FC = () => {
   // Track if user is currently scrubbing the timeline
   const [isSeeking, setIsSeeking] = useState(false);
 
-  // Audio Refs
+  // Audio State & Refs
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  
   const isComponentMounted = useRef(true);
   // Track which step's audio is currently playing to prevent re-triggering
   const playingStepIndexRef = useRef<number | null>(null);
@@ -30,14 +32,39 @@ const App: React.FC = () => {
     return () => { isComponentMounted.current = false; };
   }, []);
 
-  const initAudioContext = () => {
+  // Robust Audio Unlock for Mobile Browsers (iOS/Android)
+  const unlockAudioContext = () => {
+    // 1. Initialize AudioContext if missing
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: 24000 
       });
     }
-    if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
+    
+    const ctx = audioContextRef.current;
+
+    // 2. Resume context if suspended (common in Chrome/Edge policies)
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(e => console.error("Audio resume failed:", e));
+    }
+
+    // 3. iOS "Silent Play" Hack: Play a short silent buffer to fully unlock the audio thread
+    if (!isAudioUnlocked) {
+        try {
+            const buffer = ctx.createBuffer(1, 1, 22050);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            
+            // Clean up reference after playing
+            source.onended = () => source.disconnect();
+            
+            source.start(0);
+            setIsAudioUnlocked(true);
+            console.log("AudioContext unlocked via silent buffer interaction");
+        } catch(e) {
+            console.error("Audio unlock attempt failed", e);
+        }
     }
   };
 
@@ -69,7 +96,9 @@ const App: React.FC = () => {
             return;
         }
 
-        initAudioContext();
+        // Ensure context is ready (though should be unlocked by UI interaction)
+        unlockAudioContext();
+        
         stopCurrentAudio();
         playingStepIndexRef.current = currentStepIndex;
         
@@ -112,7 +141,9 @@ const App: React.FC = () => {
 
 
   const handleSubmit = async (text: string, imageBase64?: string, voiceName: string = 'Kore') => {
-    initAudioContext();
+    // CRITICAL: Unlock audio immediately on user interaction (Click/Touch)
+    unlockAudioContext();
+    
     setIsLoading(true);
     setIsPlaying(false);
     setSteps([]);
@@ -226,7 +257,11 @@ const App: React.FC = () => {
                 isPlaying={isPlaying}
                 currentStep={currentStepIndex}
                 totalSteps={steps.length}
-                onPlayPause={() => setIsPlaying(!isPlaying)}
+                onPlayPause={() => {
+                    // Unlock audio on Play button interaction as well
+                    if (!isPlaying) unlockAudioContext();
+                    setIsPlaying(!isPlaying);
+                }}
                 onNext={() => {
                     if (currentStepIndex < steps.length - 1) {
                         setCurrentStepIndex(curr => curr + 1);

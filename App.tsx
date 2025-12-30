@@ -28,6 +28,10 @@ const App: React.FC = () => {
   // Track which step's audio is currently playing to prevent re-triggering
   const playingStepIndexRef = useRef<number | null>(null);
 
+  // Refs for preventing auto-skip bugs
+  const autoAdvanceTimerRef = useRef<number | null>(null);
+  const seekGracePeriodRef = useRef<boolean>(false);
+
   useEffect(() => {
     return () => { isComponentMounted.current = false; };
   }, []);
@@ -69,8 +73,21 @@ const App: React.FC = () => {
   };
 
   const stopCurrentAudio = () => {
+    // 1. Clear any pending auto-advance timer immediately
+    if (autoAdvanceTimerRef.current) {
+        window.clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+    }
+
+    // 2. Stop Audio Source safely
     if (audioSourceRef.current) {
-        try { audioSourceRef.current.stop(); } catch (e) {}
+        try { 
+            // CRITICAL FIX: Nullify the onended callback BEFORE stopping.
+            // .stop() usually triggers onended. If we don't remove this, 
+            // manual seeking will trigger "step finished" logic, causing rapid skipping.
+            audioSourceRef.current.onended = null;
+            audioSourceRef.current.stop(); 
+        } catch (e) {}
         audioSourceRef.current = null;
     }
     playingStepIndexRef.current = null;
@@ -104,13 +121,25 @@ const App: React.FC = () => {
         
         if (step.audioBuffer && audioContextRef.current) {
             audioSourceRef.current = playAudio(step.audioBuffer, audioContextRef.current, () => {
+                 // onEnded Callback
+                 
+                 // 1. Check Grace Period: If user just seeked, ignore this "end" event
+                 if (seekGracePeriodRef.current) {
+                     console.log("Ignored onEnded due to seek grace period");
+                     return;
+                 }
+
                  if (isComponentMounted.current && isPlaying && !isSeeking) {
-                     // Auto advance
                      playingStepIndexRef.current = null; // Clear flag
-                     setTimeout(() => {
+                     
+                     // 2. Schedule Auto Advance with cancelable timer
+                     autoAdvanceTimerRef.current = window.setTimeout(() => {
+                         // Double check grace period before actually moving
+                         if (seekGracePeriodRef.current) return;
+
                          if (currentStepIndex < steps.length - 1 && isPlaying && !isSeeking) {
                              setCurrentStepIndex(prev => prev + 1);
-                         } else {
+                         } else if (currentStepIndex >= steps.length - 1) {
                              setIsPlaying(false);
                          }
                      }, 1500);
@@ -120,8 +149,8 @@ const App: React.FC = () => {
              // Fallback if no audio (wait then next)
              console.log(`Step ${currentStepIndex} has no audio yet, waiting...`);
              
-             setTimeout(() => {
-                 if (isComponentMounted.current && isPlaying && playingStepIndexRef.current === currentStepIndex && !isSeeking) {
+             autoAdvanceTimerRef.current = window.setTimeout(() => {
+                 if (isComponentMounted.current && isPlaying && playingStepIndexRef.current === currentStepIndex && !isSeeking && !seekGracePeriodRef.current) {
                      if (currentStepIndex < steps.length - 1) {
                          setCurrentStepIndex(prev => prev + 1);
                      } else {
@@ -135,6 +164,7 @@ const App: React.FC = () => {
     playStep();
     
     return () => {
+        // Cleanup handled by next effect run or component unmount via stopCurrentAudio
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, isPlaying, steps, isSeeking]); 
@@ -195,8 +225,18 @@ const App: React.FC = () => {
   };
 
   const handleSeek = (stepIndex: number) => {
+      // 1. Immediately stop current audio and cancel pending auto-advance
       stopCurrentAudio();
+      
+      // 2. Update Step
       setCurrentStepIndex(stepIndex);
+      
+      // 3. Activate Grace Period: Prevent auto-skip logic for 1 second after seek
+      // This absorbs any late-firing events or UI jitter
+      seekGracePeriodRef.current = true;
+      setTimeout(() => {
+          seekGracePeriodRef.current = false;
+      }, 1000);
   };
 
   return (
@@ -264,13 +304,14 @@ const App: React.FC = () => {
                 }}
                 onNext={() => {
                     if (currentStepIndex < steps.length - 1) {
-                        setCurrentStepIndex(curr => curr + 1);
+                        // Mimic seeking behavior for manual navigation to be safe
+                        handleSeek(currentStepIndex + 1);
                         setIsPlaying(true);
                     }
                 }}
                 onPrev={() => {
                     if (currentStepIndex > 0) {
-                        setCurrentStepIndex(curr => curr - 1);
+                        handleSeek(currentStepIndex - 1);
                         setIsPlaying(true);
                     }
                 }}
